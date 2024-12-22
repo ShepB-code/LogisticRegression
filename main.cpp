@@ -151,11 +151,8 @@ double modelAccuracy(const vector<SampleData> &X, const vector<int> &p) {
     }
     return static_cast<double>(numCorrect) / static_cast<double>(m);
 }
-// TIP To <b>Run</b> code, press <shortcut actionId="Run"/> or
-// click the <icon src="AllIcons.Actions.Execute"/> icon in the gutter.
+
 int main() {
-    // TIP Press <shortcut actionId="RenameElement"/> when your caret is at the
-    // <b>lang</b> variable name to see how CLion can help you rename it.
     string filename = "heart_disease.csv";
     vector<SampleData> data;
     bool success = loadDatasetFromCsv(filename, data);
