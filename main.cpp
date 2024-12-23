@@ -10,7 +10,7 @@ using namespace std;
 
 struct SampleData {
     vector<double> features;
-    double label{};
+    int label{};
 };
 
 bool loadDatasetFromCsv(const string &filename, vector<SampleData> &result)  {
@@ -46,7 +46,7 @@ bool loadDatasetFromCsv(const string &filename, vector<SampleData> &result)  {
 }
 
 void splitTrainTest(vector<SampleData> &data, vector<SampleData> &train, vector<SampleData> &test, double trainRatio = 0.8) {
-    auto rng = default_random_engine {};
+    auto rng = default_random_engine{static_cast<unsigned int>(time(nullptr))};
     ranges::shuffle(data, rng);
 
     auto trainSize = static_cast<size_t>(trainRatio * data.size());
@@ -60,10 +60,11 @@ double sigmoid(const double z) {
 }
 
 double computeCost(const vector<SampleData> &X, const vector<double> &w, const double b) {
+    size_t m = X.size(), n = w.size();
     double totalCost = 0.0;
-    for (int i = 0; i < X.size(); i++) {
+    for (size_t i = 0; i < m; i++) {
         double z = 0.0;
-        for (int j = 0; j < X[i].features.size(); j++) {
+        for (size_t j = 0; j < n; j++) {
             z += X[i].features[j] * w[j];
         }
         z += b;
@@ -72,20 +73,19 @@ double computeCost(const vector<SampleData> &X, const vector<double> &w, const d
 
         totalCost += (-X[i].label * log(sig)) - (1 - X[i].label) * log(1 - sig);
     }
-    return totalCost / static_cast<double>(X.size());
+    return totalCost / static_cast<double>(m);
 }
 // computesGradient and modifies dj_dw & dj_db
-void computeGradient(const vector<SampleData> &X, const vector<double> &w, const double b, vector<double> &dj_dw, double &dj_db) {
-    int m = X.size();
+void computeGradient(const vector<SampleData> &X, const vector<double> &w, const double b, vector<double> &dj_dw, double &dj_db, const double lambda = 0.01) {
+    size_t m = X.size(), n = w.size();
     ranges::fill(dj_dw, 0.0);
     dj_db = 0.0;
 
     // loop over all samples in data
-    for (int i = 0; i < m; i++) {
+    for (size_t i = 0; i < m; i++) {
         double z = 0;
         // loop over features in sample, basically computing  f(x)
-        int n = X[i].features.size();
-        for (int j = 0; j < n; j++) {
+        for (size_t j = 0; j < n; j++) {
             z += X[i].features[j] * w[j];
         }
         z += b;
@@ -93,7 +93,7 @@ void computeGradient(const vector<SampleData> &X, const vector<double> &w, const
         const double sig = sigmoid(z);
         const double error = sig - X[i].label;
 
-        for (int j = 0; j < n; j++) {
+        for (size_t j = 0; j < n; j++) {
             dj_dw[j] += error * X[i].features[j];
         }
         dj_db += error;
@@ -102,6 +102,12 @@ void computeGradient(const vector<SampleData> &X, const vector<double> &w, const
     for (double &grad : dj_dw) {
         grad /= static_cast<double>(m);
     }
+
+    // regularize
+    for (size_t i = 0; i < n; i++) {
+        dj_dw[i] += (lambda / m) * w[i];
+    }
+
     dj_db /= static_cast<double>(m);
 }
 
@@ -109,47 +115,90 @@ void gradientDescent(const vector<SampleData> &X, vector<double> &w, double &b, 
     vector<double> dj_dw(w.size(), 0);
     double dj_db = 0.0;
 
-    for (int i = 0; i < numIterations; i++) {
-        computeGradient(X, w, b, dj_dw, dj_db);
+    for (size_t i = 0; i < numIterations; i++) {
+        computeGradient(X, w, b,  dj_dw, dj_db);
 
         // perform descent
-        for (int j = 0; j < dj_dw.size(); j++) {
+        for (size_t j = 0; j < dj_dw.size(); j++) {
             w[j] -= alpha * dj_dw[j];
         }
         b -= alpha * dj_db;
 
 
-        if (i % 100 == 0) {
+        if (i % 1000 == 0) {
             cout << "Iteration " << i << ": Cost: "<< computeCost(X, w, b) << endl;
         }
     }
 }
 
 void predict(const vector<SampleData> &X, const vector<double> &w, const double b, vector<int> &p) {
-    int m = X.size();
-    int n = w.size();
-
-    for (int i = 0; i < m; i++) {
+    size_t m = X.size();
+    size_t n = w.size();
+    double mean = 0.0;
+    for (size_t i = 0; i < m; i++) {
         double z = 0.0;
-        for (int j = 0; j < n; j++) {
+        for (size_t j = 0; j < n; j++) {
             z += X[i].features[j] * w[j];
         }
         z += b;
 
         const double sig = sigmoid(z);
-
+        mean += sig;
         p[i] = sig >= 0.5 ? 1 : 0;
     }
+    cout << "Mean Prediction: " << mean / static_cast<double>(m) << endl;
 }
 
 double modelAccuracy(const vector<SampleData> &X, const vector<int> &p) {
-    int m = X.size();
-    int numCorrect = 0;
+    size_t m = X.size();
+    int numCorrect = 0, total0 = 0, total1 = 0, num0Correct = 0, num1Correct = 0;
 
     for (int i = 0; i < m; i++) {
-        numCorrect += (p[i] == X[i].label) ? 1: 0;
+        if (X[i].label == 0) {
+            total0 += 1;
+        } else {
+            total1 += 1;
+        }
+
+        if (p[i] == X[i].label) {
+            numCorrect += 1;
+            num0Correct += X[i].label == 0 ? 1 : 0;
+            num1Correct += X[i].label == 1 ? 1 : 0;
+        }
     }
+    cout << "0 Accuracy: " << static_cast<double>(num0Correct) / static_cast<double>(total0) << endl;
+    cout << "1 Accuracy: " << static_cast<double>(num1Correct) / static_cast<double>(total1) << endl;
     return static_cast<double>(numCorrect) / static_cast<double>(m);
+}
+
+void normalizeFeatures(vector<SampleData> &X) {
+    const size_t m = X.size(), n = X[0].features.size();
+
+    vector<double> mean(n, 0.0), stdDev(n, 0.0);
+
+    // calculate mean for each feature
+    for (const auto &sample : X) {
+        for (size_t j = 0; j < n; j++) {
+            mean[j] += sample.features[j];
+        }
+    }
+    for (auto &val : mean) val /= static_cast<double>(m);
+
+    // calculate stdDev for each feature
+    for (const auto &sample : X) {
+        for (size_t j = 0; j < n; j++) {
+            stdDev[j] += pow(sample.features[j] - mean[j], 2);
+        }
+    }
+    for (auto &val : stdDev) val = sqrt(val / static_cast<double>(m));
+
+    // normalize
+    for (auto &sample : X) {
+        for (size_t j = 0; j < n; j++) {
+            sample.features[j] = (sample.features[j] - mean[j]) / stdDev[j];
+        }
+    }
+
 }
 
 int main() {
@@ -162,21 +211,23 @@ int main() {
         return 1;
     }
 
+    // normalize features using z-score normalization
+    normalizeFeatures(data);
+
     // split train/test data
     vector<SampleData> train, test;
     splitTrainTest(data, train, test);
-
     // train model
     vector<double> w(15, 0);
     double b = 0.0;
-    double alpha = 0.001;
-    gradientDescent(train, w, b, alpha, 20000);
+    double alpha = 0.01;
+    gradientDescent(train, w, b, alpha, 10000);
 
     // predict and evaluate accuracy
     vector<int> p(test.size(), 0);
     predict(test, w, b, p);
     double accuracy = modelAccuracy(test, p);
-    cout << "Model Accuracy: " << accuracy << endl; // 83% currently
+    cout << "Model Accuracy: " << accuracy << endl; // ~85% currently
 
     return 0;
 }
